@@ -220,4 +220,62 @@ class OrderController extends Controller
 
         return response()->json(OrderResource::collection($orders)->response()->getData(true));
     }
+
+    public function statistics(): JsonResponse
+    {
+        $stats = [
+            'total'      => Order::count(),
+            'by_status'  => Order::select('status', DB::raw('COUNT(*) as count'))
+                ->groupBy('status')
+                ->pluck('count', 'status'),
+            'by_payment' => Order::select('payment_status', DB::raw('COUNT(*) as count'))
+                ->groupBy('payment_status')
+                ->pluck('count', 'payment_status'),
+            'total_revenue'     => (float) Order::where('payment_status', 'paid')->sum('total'),
+            'average_order'     => (float) round((float) Order::avg('total'), 2),
+            'today'             => Order::whereDate('created_at', today())->count(),
+            'this_week'         => Order::where('created_at', '>=', now()->startOfWeek())->count(),
+            'this_month'        => Order::where('created_at', '>=', now()->startOfMonth())->count(),
+        ];
+
+        return response()->json(['statistics' => $stats]);
+    }
+
+    public function export(Request $request): JsonResponse
+    {
+        $query = Order::with(['user', 'items', 'coupon']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('from')) {
+            $query->whereDate('created_at', '>=', $request->from);
+        }
+
+        if ($request->filled('to')) {
+            $query->whereDate('created_at', '<=', $request->to);
+        }
+
+        $orders = $query->latest()->limit(1000)->get()->map(fn ($order) => [
+            'order_number'   => $order->order_number,
+            'status'         => $order->status,
+            'payment_status' => $order->payment_status,
+            'payment_method' => $order->payment_method,
+            'subtotal'       => $order->subtotal,
+            'discount'       => $order->discount,
+            'shipping_cost'  => $order->shipping_cost,
+            'total'          => $order->total,
+            'customer_name'  => $order->user?->name,
+            'customer_email' => $order->user?->email,
+            'shipping_city'  => $order->shipping_city,
+            'items_count'    => $order->items->count(),
+            'created_at'     => $order->created_at?->toDateTimeString(),
+        ]);
+
+        return response()->json([
+            'total'  => $orders->count(),
+            'orders' => $orders,
+        ]);
+    }
 }

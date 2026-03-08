@@ -1,9 +1,15 @@
 <?php
 
-use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\Admin\AdminDashboardController;
+use App\Http\Controllers\Api\Admin\AdminProductController;
+use App\Http\Controllers\Api\Admin\AdminSettingsController;
+use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CouponController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\WishlistController;
@@ -15,6 +21,9 @@ Route::get('/categories/{slug}', [CategoryController::class, 'show']);
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{slug}', [ProductController::class, 'show']);
 Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
+
+// Payment webhook (no auth — called by gateway)
+Route::post('/payments/webhook', [PaymentController::class, 'webhook']);
 
 // Authenticated routes (any logged-in user)
 Route::middleware('auth:sanctum')->group(function () {
@@ -43,6 +52,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{orderNumber}', [OrderController::class, 'show']);
     Route::patch('/orders/{orderNumber}/cancel', [OrderController::class, 'cancel']);
+
+    // Payments
+    Route::post('/payments/initiate', [PaymentController::class, 'initiate']);
+    Route::get('/payments/{orderNumber}/status', [PaymentController::class, 'status']);
+    Route::post('/payments/{orderNumber}/refund', [PaymentController::class, 'refund']);
+
+    // Notifications
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread', [NotificationController::class, 'unread']);
+    Route::patch('/notifications/{id}/read', [NotificationController::class, 'markRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 });
 
 // Vendor routes (auth:sanctum + role:vendor|admin)
@@ -60,6 +81,7 @@ Route::prefix('vendor')->middleware(['auth:sanctum', 'role:vendor|admin'])->grou
 
 // Admin routes (auth:sanctum + role:admin)
 Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(function () {
+    // Categories
     Route::post('categories', [CategoryController::class, 'store']);
     Route::put('categories/{id}', [CategoryController::class, 'update']);
     Route::delete('categories/{id}', [CategoryController::class, 'destroy']);
@@ -76,7 +98,39 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(functi
 
     // Orders
     Route::get('orders', [OrderController::class, 'adminIndex']);
+    Route::get('orders/statistics', [OrderController::class, 'statistics']);
+    Route::get('orders/export', [OrderController::class, 'export']);
     Route::get('orders/{orderNumber}', [OrderController::class, 'adminShow']);
     Route::patch('orders/{orderNumber}/status', [OrderController::class, 'updateStatus']);
+
+    // Dashboard
+    Route::get('dashboard/overview', [AdminDashboardController::class, 'overview']);
+    Route::get('dashboard/revenue-chart', [AdminDashboardController::class, 'revenueChart']);
+    Route::get('dashboard/orders-chart', [AdminDashboardController::class, 'ordersChart']);
+    Route::get('dashboard/top-products', [AdminDashboardController::class, 'topProducts']);
+    Route::get('dashboard/top-vendors', [AdminDashboardController::class, 'topVendors']);
+    Route::get('dashboard/top-customers', [AdminDashboardController::class, 'topCustomers']);
+    Route::get('dashboard/recent-orders', [AdminDashboardController::class, 'recentOrders']);
+    Route::get('dashboard/recent-reviews', [AdminDashboardController::class, 'recentReviews']);
+    Route::get('dashboard/low-stock', [AdminDashboardController::class, 'lowStockProducts']);
+
+    // Users
+    Route::get('users', [AdminUserController::class, 'index']);
+    Route::get('users/{id}', [AdminUserController::class, 'show']);
+    Route::put('users/{id}', [AdminUserController::class, 'update']);
+    Route::patch('users/{id}/toggle-active', [AdminUserController::class, 'toggleActive']);
+    Route::patch('users/{id}/role', [AdminUserController::class, 'changeRole']);
+    Route::delete('users/{id}', [AdminUserController::class, 'destroy']);
+
+    // Products (admin view)
+    Route::get('products', [AdminProductController::class, 'index']);
+    Route::get('products/{id}', [AdminProductController::class, 'show']);
+    Route::patch('products/{id}/toggle-active', [AdminProductController::class, 'toggleActive']);
+    Route::patch('products/{id}/toggle-featured', [AdminProductController::class, 'toggleFeatured']);
+    Route::delete('products/{id}', [AdminProductController::class, 'destroy']);
+
+    // Settings
+    Route::get('settings', [AdminSettingsController::class, 'index']);
+    Route::put('settings', [AdminSettingsController::class, 'update']);
 });
 
