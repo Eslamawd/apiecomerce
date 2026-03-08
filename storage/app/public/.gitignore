@@ -1,0 +1,12 @@
+*
+!.gitignore
+!categories/
+!categories/images/
+!categories/images/.gitkeep
+!categories/videos/
+!categories/videos/.gitkeep
+!products/
+!products/images/
+!products/images/.gitkeep
+!products/videos/
+!products/videos/.gitkeep
