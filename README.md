@@ -10,7 +10,7 @@ Laravel-based E-Commerce API with Sanctum authentication supporting both Mobile 
 - **Storage:** Local (Images/Videos)
 
 ## Status
-🚧 Under Development — Phase 2 (Products & Categories) completed
+🚧 Under Development — Phase 3 (Reviews, Cart, Wishlist, Orders, Coupons) completed
 
 ---
 
@@ -133,3 +133,174 @@ storage/app/public/products/videos/
 ```
 
 Run `php artisan storage:link` to create the public symlink.
+
+---
+
+## Phase 3 Endpoints
+
+### Reviews (Public)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/products/{productId}/reviews` | List approved reviews for a product (paginated) |
+
+### Reviews (Auth Required)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/products/{productId}/reviews` | Create a review for a product |
+| PUT | `/api/reviews/{id}` | Update own review |
+| DELETE | `/api/reviews/{id}` | Delete own review (or admin) |
+
+#### Review Request Body (store)
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `rating` | integer | Yes | 1–5 |
+| `comment` | string | No | Max 1000 chars |
+
+### Reviews (Admin)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/reviews` | List all reviews including unapproved |
+| PATCH | `/api/admin/reviews/{id}/approve` | Toggle approve/disapprove |
+
+---
+
+### Cart (Auth Required)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/cart` | View cart |
+| POST | `/api/cart/items` | Add product to cart |
+| PUT | `/api/cart/items/{productId}` | Update item quantity |
+| DELETE | `/api/cart/items/{productId}` | Remove item from cart |
+| DELETE | `/api/cart` | Clear entire cart |
+
+#### Add Item Request Body
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `product_id` | integer | Yes | Must exist |
+| `quantity` | integer | Yes | Min: 1 |
+
+---
+
+### Wishlist (Auth Required)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/wishlist` | List wishlist products |
+| POST | `/api/wishlist` | Toggle add/remove product |
+| DELETE | `/api/wishlist/{productId}` | Remove product from wishlist |
+
+#### Toggle Request Body
+
+| Field | Type | Required |
+|-------|------|----------|
+| `product_id` | integer | Yes |
+
+---
+
+### Coupons (Auth Required)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/coupons/validate` | Validate a coupon code |
+
+#### Validate Request Body
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `code` | string | Yes | Coupon code |
+| `order_total` | numeric | No | Used to calculate discount |
+
+### Coupons (Admin)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/coupons` | List all coupons |
+| POST | `/api/admin/coupons` | Create coupon |
+| PUT | `/api/admin/coupons/{id}` | Update coupon |
+| DELETE | `/api/admin/coupons/{id}` | Delete coupon |
+
+#### Coupon Request Body
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `code` | string | Yes | Unique code |
+| `type` | enum | Yes | `fixed` or `percentage` |
+| `value` | decimal | Yes | Discount value |
+| `min_order_amount` | decimal | No | Minimum order total |
+| `max_discount` | decimal | No | Max discount for percentage type |
+| `usage_limit` | integer | No | Max total uses |
+| `starts_at` | datetime | No | Coupon start date |
+| `expires_at` | datetime | No | Coupon expiry date |
+| `is_active` | boolean | No | Default: true |
+
+---
+
+### Orders (Auth Required)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/orders` | Create order from cart |
+| GET | `/api/orders` | My orders (paginated) |
+| GET | `/api/orders/{orderNumber}` | Order details |
+| PATCH | `/api/orders/{orderNumber}/cancel` | Cancel order (pending only) |
+
+#### Create Order Request Body
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `shipping_name` | string | Yes | |
+| `shipping_phone` | string | Yes | |
+| `shipping_address` | string | Yes | |
+| `shipping_city` | string | Yes | |
+| `shipping_email` | string | No | |
+| `shipping_latitude` | numeric | No | |
+| `shipping_longitude` | numeric | No | |
+| `payment_method` | enum | Yes | `cash_on_delivery` or `online` |
+| `coupon_code` | string | No | Valid coupon code |
+| `notes` | string | No | |
+
+### Orders (Vendor)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/vendor/orders` | Orders containing vendor's products |
+
+### Orders (Admin)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/orders` | All orders with filters |
+| GET | `/api/admin/orders/{orderNumber}` | Any order details |
+| PATCH | `/api/admin/orders/{orderNumber}/status` | Update order status |
+
+#### Admin Order Filters
+
+| Query Param | Description |
+|-------------|-------------|
+| `?status=` | Filter by order status |
+| `?user=` | Filter by user ID |
+| `?from=` | Date range start |
+| `?to=` | Date range end |
+| `?search=` | Search by order number |
+| `?payment_status=` | Filter by payment status |
+| `?sort_by=` | Sort field (created_at, total, status) |
+| `?sort_dir=` | asc or desc |
+| `?per_page=` | Results per page (max 100) |
+
+#### Update Status Request Body
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `status` | enum | Yes | pending, confirmed, processing, shipped, delivered, cancelled, refunded |
+| `payment_status` | enum | No | pending, paid, failed, refunded |
+
+#### Order Statuses
+
+- `pending` → `confirmed` → `processing` → `shipped` → `delivered`
+- `cancelled`, `refunded`
