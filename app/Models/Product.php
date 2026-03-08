@@ -30,6 +30,8 @@ class Product extends Model
         'vendor_id',
     ];
 
+    protected $appends = ['average_rating', 'reviews_count'];
+
     protected $casts = [
         'price' => 'decimal:2',
         'old_price' => 'decimal:2',
@@ -82,6 +84,23 @@ class Product extends Model
     public function primaryImage(): HasOne
     {
         return $this->hasOne(ProductImage::class)->where('is_primary', true);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function getAverageRatingAttribute(): ?float
+    {
+        $avg = $this->reviews()->approved()->avg('rating');
+
+        return $avg ? round((float) $avg, 2) : null;
+    }
+
+    public function getReviewsCountAttribute(): int
+    {
+        return $this->reviews()->approved()->count();
     }
 
     public function scopeActive($query)
