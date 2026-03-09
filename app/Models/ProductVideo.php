@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class ProductVideo extends Model
 {
@@ -20,7 +21,11 @@ class ProductVideo extends Model
 
     public function getVideoAttribute(?string $value): ?string
     {
-        return $value ? asset('storage/' . $value) : null;
+        if (! $value) {
+            return null;
+        }
+
+        return Str::startsWith($value, ['http://', 'https://']) ? $value : asset('storage/' . $value);
     }
 
     public function product(): BelongsTo

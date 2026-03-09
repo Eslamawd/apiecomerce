@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class CategoryController extends Controller
 {
@@ -23,6 +24,19 @@ class CategoryController extends Controller
     {
         $categories = Category::with('children')
             ->active()
+            ->parents()
+            ->orderBy('sort_order')
+            ->get();
+
+        return CategoryResource::collection($categories);
+    }
+
+    public function adminIndex(): AnonymousResourceCollection
+    {
+        $categories = Category::with([
+            'children' => fn ($query) => $query->with('children')->withCount('products')->orderBy('sort_order'),
+        ])
+            ->withCount('products')
             ->parents()
             ->orderBy('sort_order')
             ->get();
@@ -44,6 +58,7 @@ class CategoryController extends Controller
     public function store(StoreCategoryRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $this->ensureValidParentHierarchy($data['parent_id'] ?? null, null);
 
         if ($request->hasFile('image')) {
             $data['image'] = $this->fileUploadService->upload($request->file('image'), 'categories/images');
@@ -62,6 +77,7 @@ class CategoryController extends Controller
     {
         $category = Category::findOrFail($id);
         $data = $request->validated();
+        $this->ensureValidParentHierarchy($data['parent_id'] ?? null, $category->id);
 
         if ($request->hasFile('image')) {
             $this->fileUploadService->delete($this->getRawPath($category, 'image'));
@@ -97,5 +113,34 @@ class CategoryController extends Controller
     private function getRawPath(Category $category, string $field): ?string
     {
         return $category->getRawOriginal($field);
+    }
+
+    private function ensureValidParentHierarchy(?int $parentId, ?int $currentCategoryId): void
+    {
+        if (! $parentId) {
+            return;
+        }
+
+        if ($currentCategoryId !== null && $parentId === $currentCategoryId) {
+            throw ValidationException::withMessages([
+                'parent_id' => ['Category cannot be its own parent.'],
+            ]);
+        }
+
+        $cursor = Category::query()->select(['id', 'parent_id'])->find($parentId);
+
+        while ($cursor) {
+            if ($currentCategoryId !== null && (int) $cursor->id === (int) $currentCategoryId) {
+                throw ValidationException::withMessages([
+                    'parent_id' => ['Invalid parent category. Circular hierarchy is not allowed.'],
+                ]);
+            }
+
+            if (! $cursor->parent_id) {
+                break;
+            }
+
+            $cursor = Category::query()->select(['id', 'parent_id'])->find($cursor->parent_id);
+        }
     }
 }

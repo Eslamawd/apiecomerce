@@ -17,8 +17,8 @@ use App\Http\Controllers\Api\WishlistController;
 use Illuminate\Support\Facades\Route;
 
 // Auth routes (public)
-Route::post('/auth/register', [AuthController::class, 'register']);
-Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 
 // Auth routes (protected)
 Route::middleware('auth:sanctum')->group(function () {
@@ -34,7 +34,7 @@ Route::get('/products/{slug}', [ProductController::class, 'show']);
 Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
 
 // Payment webhook (no auth — called by gateway)
-Route::post('/payments/webhook', [PaymentController::class, 'webhook']);
+Route::post('/payments/webhook', [PaymentController::class, 'webhook'])->middleware('throttle:sensitive');
 
 // Authenticated routes (any logged-in user)
 Route::middleware('auth:sanctum')->group(function () {
@@ -56,7 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/reviews/{id}', [ReviewController::class, 'destroy']);
 
     // Coupons (customer validate)
-    Route::post('/coupons/validate', [CouponController::class, 'validateCoupon']);
+    Route::post('/coupons/validate', [CouponController::class, 'validateCoupon'])->middleware('throttle:sensitive');
 
     // Orders (customer)
     Route::post('/orders', [OrderController::class, 'store']);
@@ -65,9 +65,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/orders/{orderNumber}/cancel', [OrderController::class, 'cancel']);
 
     // Payments
-    Route::post('/payments/initiate', [PaymentController::class, 'initiate']);
+    Route::post('/payments/initiate', [PaymentController::class, 'initiate'])->middleware('throttle:sensitive');
     Route::get('/payments/{orderNumber}/status', [PaymentController::class, 'status']);
-    Route::post('/payments/{orderNumber}/refund', [PaymentController::class, 'refund']);
+    Route::post('/payments/{orderNumber}/refund', [PaymentController::class, 'refund'])->middleware('throttle:sensitive');
 
     // Notifications
     Route::get('/notifications', [NotificationController::class, 'index']);
@@ -79,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // Vendor routes (auth:sanctum + role:vendor|admin)
 Route::prefix('vendor')->middleware(['auth:sanctum', 'role:vendor|admin'])->group(function () {
+    Route::get('products', [ProductController::class, 'vendorIndex']);
     Route::post('products', [ProductController::class, 'store']);
     Route::put('products/{id}', [ProductController::class, 'update']);
     Route::delete('products/{id}', [ProductController::class, 'destroy']);
@@ -93,6 +94,7 @@ Route::prefix('vendor')->middleware(['auth:sanctum', 'role:vendor|admin'])->grou
 // Admin routes (auth:sanctum + role:admin)
 Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(function () {
     // Categories
+    Route::get('categories', [CategoryController::class, 'adminIndex']);
     Route::post('categories', [CategoryController::class, 'store']);
     Route::put('categories/{id}', [CategoryController::class, 'update']);
     Route::delete('categories/{id}', [CategoryController::class, 'destroy']);

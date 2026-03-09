@@ -75,6 +75,30 @@ class ProductController extends Controller
         return response()->json(new ProductResource($product));
     }
 
+    public function vendorIndex(Request $request): JsonResponse
+    {
+        $query = Product::with(['category', 'images', 'videos', 'primaryImage', 'vendor'])
+            ->where('vendor_id', $request->user()->id);
+
+        if ($request->filled('search')) {
+            $term = $request->search;
+            $query->where(function ($q) use ($term) {
+                $q->where('name', 'like', "%{$term}%")
+                    ->orWhere('name_en', 'like', "%{$term}%")
+                    ->orWhere('sku', 'like', "%{$term}%");
+            });
+        }
+
+        $sortBy = in_array($request->sort_by, ['price', 'name', 'created_at', 'quantity']) ? $request->sort_by : 'created_at';
+        $sortDir = $request->sort_dir === 'asc' ? 'asc' : 'desc';
+        $query->orderBy($sortBy, $sortDir);
+
+        $perPage = min((int) $request->get('per_page', 15), 100);
+        $products = $query->paginate($perPage);
+
+        return response()->json(ProductResource::collection($products)->response()->getData(true));
+    }
+
     public function store(StoreProductRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -126,6 +150,41 @@ class ProductController extends Controller
         }
 
         $product->update($data);
+
+        if ($request->hasFile('images')) {
+            $currentCount = $product->images()->count();
+            $hasPrimary = $product->images()->where('is_primary', true)->exists();
+
+            foreach ($request->file('images') as $index => $imageFile) {
+                $path = $this->fileUploadService->upload($imageFile, 'products/images');
+                $isPrimary = ! $hasPrimary && $index === 0;
+
+                ProductImage::create([
+                    'product_id' => $product->id,
+                    'image' => $path,
+                    'sort_order' => $currentCount + $index,
+                    'is_primary' => $isPrimary,
+                ]);
+
+                if ($isPrimary) {
+                    $hasPrimary = true;
+                }
+            }
+        }
+
+        if ($request->hasFile('videos')) {
+            $currentCount = $product->videos()->count();
+
+            foreach ($request->file('videos') as $index => $videoFile) {
+                $path = $this->fileUploadService->upload($videoFile, 'products/videos');
+
+                ProductVideo::create([
+                    'product_id' => $product->id,
+                    'video' => $path,
+                    'sort_order' => $currentCount + $index,
+                ]);
+            }
+        }
 
         return response()->json(
             new ProductResource($product->fresh()->load(['category', 'images', 'videos', 'primaryImage', 'vendor']))

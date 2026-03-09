@@ -40,12 +40,20 @@ class Category extends Model
 
     public function getImageAttribute(?string $value): ?string
     {
-        return $value ? asset('storage/' . $value) : null;
+        if (! $value) {
+            return null;
+        }
+
+        return Str::startsWith($value, ['http://', 'https://']) ? $value : asset('storage/' . $value);
     }
 
     public function getVideoAttribute(?string $value): ?string
     {
-        return $value ? asset('storage/' . $value) : null;
+        if (! $value) {
+            return null;
+        }
+
+        return Str::startsWith($value, ['http://', 'https://']) ? $value : asset('storage/' . $value);
     }
 
     public function parent(): BelongsTo
