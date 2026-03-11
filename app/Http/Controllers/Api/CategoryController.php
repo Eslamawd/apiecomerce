@@ -7,6 +7,7 @@ use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Http\Resources\CategoryResource;
 use App\Models\Category;
+use App\Models\Product;
 use App\Services\FileUploadService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -22,11 +23,16 @@ class CategoryController extends Controller
 
     public function index(): AnonymousResourceCollection
     {
-        $categories = Category::with('children')
+        $categories = Category::query()
             ->active()
             ->parents()
             ->orderBy('sort_order')
             ->get();
+
+        foreach ($categories as $category) {
+            /** @var Category $category */
+            $this->loadChildrenRecursively($category);
+        }
 
         return CategoryResource::collection($categories);
     }
@@ -46,11 +52,22 @@ class CategoryController extends Controller
 
     public function show(string $slug): JsonResponse
     {
-        $category = Category::with(['children', 'products' => function ($query) {
-            $query->active()->with(['primaryImage', 'images', 'videos']);
-        }])
+        $category = Category::query()
             ->where('slug', $slug)
             ->firstOrFail();
+
+        $this->loadChildrenRecursively($category);
+
+        $categoryIds = $this->collectDescendantCategoryIds($category);
+
+        $products = Product::query()
+            ->active()
+            ->whereIn('category_id', $categoryIds)
+            ->with(['category', 'primaryImage', 'images', 'videos', 'vendor'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $category->setRelation('products', $products);
 
         return response()->json(new CategoryResource($category));
     }
@@ -142,5 +159,27 @@ class CategoryController extends Controller
 
             $cursor = Category::query()->select(['id', 'parent_id'])->find($cursor->parent_id);
         }
+    }
+
+    private function loadChildrenRecursively(Category $category): void
+    {
+        $category->load([
+            'children' => fn ($query) => $query->active()->orderBy('sort_order'),
+        ]);
+
+        foreach ($category->children as $child) {
+            $this->loadChildrenRecursively($child);
+        }
+    }
+
+    private function collectDescendantCategoryIds(Category $category): array
+    {
+        $ids = [$category->id];
+
+        foreach ($category->children as $child) {
+            $ids = array_merge($ids, $this->collectDescendantCategoryIds($child));
+        }
+
+        return array_values(array_unique($ids));
     }
 }

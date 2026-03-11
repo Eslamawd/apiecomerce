@@ -13,12 +13,16 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\WishlistController;
 use Illuminate\Support\Facades\Route;
 
 // Auth routes (public)
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:auth');
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:auth');
+Route::post('/auth/email/verification-notification', [AuthController::class, 'resendVerification'])->middleware('throttle:auth');
 
 // Auth routes (protected)
 Route::middleware('auth:sanctum')->group(function () {
@@ -32,6 +36,8 @@ Route::get('/categories/{slug}', [CategoryController::class, 'show']);
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{slug}', [ProductController::class, 'show']);
 Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
+Route::get('/search', [SearchController::class, 'index']);
+Route::get('/search/suggestions', [SearchController::class, 'suggestions']);
 
 // Payment webhook (no auth — called by gateway)
 Route::post('/payments/webhook', [PaymentController::class, 'webhook'])->middleware('throttle:sensitive');

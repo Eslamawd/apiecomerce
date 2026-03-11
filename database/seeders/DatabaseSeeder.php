@@ -21,6 +21,10 @@ class DatabaseSeeder extends Seeder
         Role::findOrCreate('vendor', $guardName);
         Role::findOrCreate('customer', $guardName);
 
+        $this->call([
+            DeepCategoryTreeSeeder::class,
+        ]);
+
         // User::factory(10)->create();
 
         $testUser = User::factory()->create([

@@ -21,7 +21,7 @@ class StoreOrderRequest extends FormRequest
             'shipping_email'     => 'nullable|email|max:255',
             'shipping_latitude'  => 'nullable|numeric',
             'shipping_longitude' => 'nullable|numeric',
-            'payment_method'     => 'required|in:cash_on_delivery,online',
+            'payment_method'     => 'required|in:cash_on_delivery',
             'coupon_code'        => 'nullable|string|exists:coupons,code',
             'notes'              => 'nullable|string',
         ];

@@ -16,23 +16,22 @@ use Spatie\Permission\Models\Role;
 
 class DemoCatalogImportService
 {
-    public function import(string $provider = 'dummyjson', int $limit = 30): array
+    public function import(string $provider = 'dummyjson', int $target = 30): array
     {
         return match (strtolower($provider)) {
-            'dummyjson' => $this->importFromDummyJson(max(1, min($limit, 100))),
+            'dummyjson' => $this->importFromDummyJson(max(1, min($target, 5000))),
             default => throw new RuntimeException("Unsupported provider [{$provider}]."),
         };
     }
 
-    private function importFromDummyJson(int $limit): array
+    private function importFromDummyJson(int $target): array
     {
-        $payload = Http::timeout(30)
-            ->acceptJson()
-            ->get('https://dummyjson.com/products', ['limit' => $limit])
-            ->throw()
-            ->json();
+        $sourceProducts = $this->fetchDummyJsonProductsPool(200);
+        $sourceCount = count($sourceProducts);
 
-        $products = $payload['products'] ?? [];
+        if ($sourceCount === 0) {
+            throw new RuntimeException('No products returned from dummyjson provider.');
+        }
 
         $guardName = config('auth.defaults.guard', 'web');
         Role::findOrCreate('vendor', $guardName);
@@ -56,10 +55,15 @@ class DemoCatalogImportService
             'reviews' => 0,
             'images' => 0,
             'videos' => 0,
+            'target' => $target,
+            'source_pool' => $sourceCount,
             'provider' => 'dummyjson',
         ];
 
-        foreach ($products as $entry) {
+        for ($index = 0; $index < $target; $index++) {
+            $entry = $sourceProducts[$index % $sourceCount];
+            $copyNumber = intdiv($index, $sourceCount) + 1;
+
             $categoryName = (string) ($entry['category'] ?? 'General');
             $categorySlug = Str::slug($categoryName);
 
@@ -79,9 +83,11 @@ class DemoCatalogImportService
                 $stats['categories']++;
             }
 
-            $title = trim((string) ($entry['title'] ?? 'Imported Product'));
+            $baseTitle = trim((string) ($entry['title'] ?? 'Imported Product'));
+            $title = $copyNumber > 1 ? "{$baseTitle} #{$copyNumber}" : $baseTitle;
             $description = trim((string) ($entry['description'] ?? 'Imported from dummy provider'));
-            $sku = trim((string) ($entry['sku'] ?? 'SKU-' . ($entry['id'] ?? Str::uuid()->toString())));
+            $baseSku = trim((string) ($entry['sku'] ?? 'SKU-' . ($entry['id'] ?? Str::uuid()->toString())));
+            $sku = $copyNumber > 1 ? $this->resolveUniqueSku($baseSku, $copyNumber) : $baseSku;
             $rawPrice = (float) ($entry['price'] ?? 0);
             $discount = (float) ($entry['discountPercentage'] ?? 0);
             $oldPrice = $discount > 0 ? round($rawPrice * (1 + ($discount / 100)), 2) : null;
@@ -94,7 +100,7 @@ class DemoCatalogImportService
                 [
                     'name' => $title,
                     'name_en' => $title,
-                    'slug' => $slug,
+                    'slug' => $copyNumber > 1 ? $this->resolveUniqueProductSlug(Str::slug($title)) : $slug,
                     'description' => $description,
                     'description_en' => $description,
                     'price' => max($rawPrice, 0),
@@ -158,6 +164,48 @@ class DemoCatalogImportService
         }
 
         return $stats;
+    }
+
+    private function fetchDummyJsonProductsPool(int $poolTarget): array
+    {
+        $products = [];
+        $skip = 0;
+        $batchSize = 100;
+        $maxPages = 10;
+        $page = 0;
+
+        while (count($products) < $poolTarget && $page < $maxPages) {
+            $payload = Http::timeout(45)
+                ->acceptJson()
+                ->get('https://dummyjson.com/products', [
+                    'limit' => $batchSize,
+                    'skip' => $skip,
+                ])
+                ->throw()
+                ->json();
+
+            $chunk = $payload['products'] ?? [];
+            if (! is_array($chunk) || count($chunk) === 0) {
+                break;
+            }
+
+            foreach ($chunk as $item) {
+                $products[] = $item;
+                if (count($products) >= $poolTarget) {
+                    break;
+                }
+            }
+
+            $skip += count($chunk);
+            $page++;
+
+            $total = (int) ($payload['total'] ?? 0);
+            if ($total > 0 && $skip >= $total) {
+                break;
+            }
+        }
+
+        return $products;
     }
 
     private function syncProductMediaFromEntry(Product $product, array $entry, array &$stats): void
@@ -237,5 +285,19 @@ class DemoCatalogImportService
         }
 
         return $slug;
+    }
+
+    private function resolveUniqueSku(string $baseSku, int $copyNumber): string
+    {
+        $base = trim($baseSku) !== '' ? trim($baseSku) : 'SKU-' . Str::upper(Str::random(8));
+        $candidate = $base . '-X' . $copyNumber;
+        $counter = 1;
+
+        while (Product::where('sku', $candidate)->exists()) {
+            $counter++;
+            $candidate = $base . '-X' . $copyNumber . '-' . $counter;
+        }
+
+        return $candidate;
     }
 }

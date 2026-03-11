@@ -9,6 +9,9 @@ use App\Models\Cart;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
+use App\Models\User;
+use App\Notifications\VendorOrderPlacedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -97,6 +100,8 @@ class OrderController extends Controller
             return $order;
         });
 
+        $this->notifyVendorsForOrder($order, (string) $user->name);
+
         return response()->json(
             new OrderResource($order->load(['items', 'coupon', 'user'])),
             201
@@ -127,13 +132,33 @@ class OrderController extends Controller
     {
         $order = Order::where('order_number', $orderNumber)
             ->where('user_id', $request->user()->id)
+            ->with(['items'])
             ->firstOrFail();
 
         if ($order->status !== 'pending') {
             return response()->json(['message' => 'Only pending orders can be cancelled.'], 422);
         }
 
-        $order->update(['status' => 'cancelled']);
+        DB::transaction(function () use ($order) {
+            foreach ($order->items as $item) {
+                if (! $item->product_id) {
+                    continue;
+                }
+
+                DB::table('products')
+                    ->where('id', $item->product_id)
+                    ->increment('quantity', (int) $item->quantity);
+            }
+
+            if ($order->coupon_id) {
+                DB::table('coupons')
+                    ->where('id', $order->coupon_id)
+                    ->where('used_count', '>', 0)
+                    ->decrement('used_count');
+            }
+
+            $order->update(['status' => 'cancelled']);
+        });
 
         return response()->json(new OrderResource($order->load(['items', 'coupon'])));
     }
@@ -198,6 +223,15 @@ class OrderController extends Controller
 
         if ($request->filled('payment_status')) {
             $data['payment_status'] = $request->payment_status;
+        }
+
+        // COD lifecycle: once delivered, payment is considered collected.
+        if (
+            $request->status === 'delivered'
+            && $order->payment_method === 'cash_on_delivery'
+            && ! $request->filled('payment_status')
+        ) {
+            $data['payment_status'] = 'paid';
         }
 
         $order->update($data);
@@ -277,5 +311,76 @@ class OrderController extends Controller
             'total'  => $orders->count(),
             'orders' => $orders,
         ]);
+    }
+
+    private function notifyVendorsForOrder(Order $order, string $customerName): void
+    {
+        $orderItems = $order->items()->get();
+
+        if ($orderItems->isEmpty()) {
+            return;
+        }
+
+        $productIds = $orderItems
+            ->pluck('product_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            return;
+        }
+
+        $products = Product::query()
+            ->select(['id', 'vendor_id'])
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
+
+        $groupedByVendor = [];
+
+        foreach ($orderItems as $item) {
+            $product = $products->get($item->product_id);
+            if (! $product || ! $product->vendor_id) {
+                continue;
+            }
+
+            $vendorId = (int) $product->vendor_id;
+
+            if (! isset($groupedByVendor[$vendorId])) {
+                $groupedByVendor[$vendorId] = [];
+            }
+
+            $groupedByVendor[$vendorId][] = [
+                'product_name' => (string) ($item->product_name ?: $item->product_name_en),
+                'quantity' => (int) $item->quantity,
+                'product_price' => (float) $item->product_price,
+                'subtotal' => (float) $item->subtotal,
+            ];
+        }
+
+        if ($groupedByVendor === []) {
+            return;
+        }
+
+        $vendors = User::query()
+            ->whereIn('id', array_keys($groupedByVendor))
+            ->get()
+            ->keyBy('id');
+
+        foreach ($groupedByVendor as $vendorId => $items) {
+            $vendor = $vendors->get($vendorId);
+            /** @var User|null $vendor */
+
+            if (! $vendor) {
+                continue;
+            }
+
+            try {
+                $vendor->notify(new VendorOrderPlacedNotification($order, $items, $customerName));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 }

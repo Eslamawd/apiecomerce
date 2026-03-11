@@ -22,6 +22,7 @@ class CategoryResource extends JsonResource
             'is_active'      => $this->is_active,
             'sort_order'     => $this->sort_order,
             'children'       => CategoryResource::collection($this->whenLoaded('children')),
+            'products'       => ProductResource::collection($this->whenLoaded('products')),
             'products_count' => $this->whenCounted('products'),
             'created_at'     => $this->created_at,
             'updated_at'     => $this->updated_at,
