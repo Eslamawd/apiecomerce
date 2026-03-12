@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Support\Str;
@@ -41,7 +42,7 @@ class AuthController extends Controller
         Role::findOrCreate('vendor', $guardName);
         Role::findOrCreate('customer', $guardName);
 
-        $adminEmail = strtolower(trim((string) env('ADMIN_EMAIL', '')));
+        $adminEmail = strtolower(trim((string) config('app.admin_email', '')));
         $roleToAssign = $adminEmail !== '' && strtolower($user->email) === $adminEmail
             ? 'admin'
             : 'customer';
@@ -147,6 +148,30 @@ class AuthController extends Controller
         return ApiResponse::success(null, 'Logged out successfully.');
     }
 
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return ApiResponse::error('Unauthenticated.', 401);
+        }
+
+        try {
+            DB::transaction(function () use ($user): void {
+                // Revoke all active tokens first, then remove the account.
+                $user->tokens()->delete();
+                $user->delete();
+            });
+
+            return ApiResponse::success(null, 'Account deleted successfully.');
+        } catch (\Throwable $e) {
+            return ApiResponse::error(
+                'Unable to delete account at the moment. Please contact support.',
+                422
+            );
+        }
+    }
+
     public function me(Request $request): JsonResponse
     {
         $user = $request->user()->load('roles');
@@ -211,7 +236,7 @@ class AuthController extends Controller
 
     private function verificationRedirectUrl(string $status): string
     {
-        $frontend = rtrim((string) env('FRONTEND_URL', 'http://localhost:3000'), '/');
+        $frontend = rtrim((string) config('app.frontend_url', 'http://localhost:3000'), '/');
 
         return "{$frontend}/login?verify={$status}";
     }

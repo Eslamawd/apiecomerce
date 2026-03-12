@@ -28,6 +28,7 @@ Route::post('/auth/email/verification-notification', [AuthController::class, 're
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::delete('/auth/account', [AuthController::class, 'deleteAccount']);
 });
 
 // Public routes

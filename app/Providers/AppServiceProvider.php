@@ -38,7 +38,7 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(20)->by((string) $userKey);
         });
         ResetPassword::createUrlUsing(function (object $notifiable, string $token): string {
-            $frontend = rtrim((string) env('FRONTEND_URL', 'http://localhost:3000'), '/');
+            $frontend = rtrim((string) config('app.frontend_url', 'http://localhost:3000'), '/');
             $email = urlencode((string) $notifiable->getEmailForPasswordReset());
 
             return "{$frontend}/reset-password?token={$token}&email={$email}";

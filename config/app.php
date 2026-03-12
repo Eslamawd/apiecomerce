@@ -54,6 +54,12 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Frontend app URL used for auth redirects (email verification / password reset).
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
+
+    // Optional email that should be auto-promoted to admin at registration.
+    'admin_email' => env('ADMIN_EMAIL', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
